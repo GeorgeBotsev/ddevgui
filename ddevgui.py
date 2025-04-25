@@ -2,9 +2,10 @@ import os
 import subprocess
 import threading
 import tkinter as tk
-from tkinter import messagebox, filedialog, simpledialog
+from tkinter import messagebox, filedialog, simpledialog, ttk
 from pathlib import Path
 import platform
+import yaml
 
 # Constants
 PROJECTS_DIR = Path(__file__).resolve().parent / "websites"
@@ -12,6 +13,10 @@ REFRESH_INTERVAL = 5000  # in milliseconds
 DDEV_COMMAND = "ddev"
 if platform.system() == "Windows":
     DDEV_COMMAND = "C:\\Program Files\\ddev\\ddev.exe"  # Adjust this path if needed
+
+PHP_VERSIONS = ["5.6", "7.0", "7.1", "7.2", "7.3", "7.4", "8.0", "8.1", "8.2", "8.3", "8.4"]
+DB_VERSIONS = ["mariadb:5.5", "mariadb:10.0", "mariadb:10.1", "mariadb:10.2", "mariadb:10.3", "mariadb:10.4", "mariadb:10.5", "mariadb:10.6", "mariadb:10.8", "mariadb:10.11", "mariadb:11.4", "mysql:5.5", "mysql:5.6", "mysql:5.7", "mysql:8.0", "mysql:8.1", "mysql:8.2", "mysql:8.3", "mysql:8.4"]
+WEBSERVERS = ["apache-fpm", "nginx-fpm", "generic"]
 
 class DDEVManagerGUI:
     def __init__(self, root):
@@ -129,52 +134,141 @@ class DDEVManagerGUI:
                 self.run_ddev_command(self.selected_project, ["export-db", "--file", export_path])
 
     def enable_xdebug(self, mode):
-        if self.selected_project:
-            self.run_ddev_command(self.selected_project, ["xdebug", "on"])
-            config_file = PROJECTS_DIR / self.selected_project / ".ddev" / "php" / "php.ini"
-            config_file.parent.mkdir(parents=True, exist_ok=True)
+        if not self.selected_project:
+            messagebox.showerror("Error", "No project selected.")
+            return
+
+        project_path = PROJECTS_DIR / self.selected_project
+        php_config_dir = project_path / ".ddev" / "php"
+        php_ini_file = php_config_dir / "php.ini"
+
+        try:
+            php_config_dir.mkdir(parents=True, exist_ok=True)
+
             output_dir = "/var/www/html/.ddev/"
-            mode_line = (
-                f"[PHP]\n"
+            if mode not in ["debug", "profile"]:
+                messagebox.showerror("Error", "Unsupported Xdebug mode. Choose 'debug' or 'profile'.")
+                return
+
+            php_ini_content = (
+                "[PHP]\n"
                 f"xdebug.mode={mode}\n"
-                f"xdebug.start_with_request=yes\n"
-                f"xdebug.use_compression=false"
-                f"xdebug.profiler_output_name=trace.%c%p%r%u.out\n"
+                "xdebug.start_with_request=yes\n"
+                "xdebug.use_compression=false\n"
+                "xdebug.profiler_output_name=trace.%c%p%r%u.out\n"
                 f"xdebug.output_dir=\"{output_dir}\"\n"
             )
-            try:
-                with open(config_file, "w") as f:
-                    f.write(mode_line)
-                self.run_ddev_command(self.selected_project, ["restart"])
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to write xdebug config: {e}")
+
+            with open(php_ini_file, "w") as f:
+                f.write(php_ini_content)
+
+            restart_result = subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path, capture_output=True, text=True)
+            if restart_result.returncode != 0:
+                raise RuntimeError(restart_result.stderr)
+
+            enable_result = subprocess.run([DDEV_COMMAND, "xdebug", "enable"], cwd=project_path, capture_output=True, text=True)
+            if enable_result.returncode != 0:
+                raise RuntimeError(enable_result.stderr)
+
+            messagebox.showinfo("Success", f"Xdebug {mode} mode enabled (php.ini written, container restarted, xdebug activated).")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to enable Xdebug: {e}")
+
+    def ask_project_settings(self):
+        settings_win = tk.Toplevel(self.root)
+        settings_win.title("Project Settings")
+        settings_win.grab_set()
+
+        tk.Label(settings_win, text="PHP Version:").pack()
+        php_version_var = tk.StringVar(value=PHP_VERSIONS[0])
+        php_dropdown = ttk.Combobox(settings_win, textvariable=php_version_var, values=PHP_VERSIONS)
+        php_dropdown.pack()
+
+        tk.Label(settings_win, text="Database:").pack()
+        db_version_var = tk.StringVar(value=DB_VERSIONS[0])
+        db_dropdown = ttk.Combobox(settings_win, textvariable=db_version_var,     values=DB_VERSIONS)
+        db_dropdown.pack()
+        tk.Label(settings_win, text="Webserver:").pack()
+        webserver_var = tk.StringVar(value=WEBSERVERS[0])
+        web_dropdown = ttk.Combobox(settings_win, textvariable=webserver_var, values=WEBSERVERS)
+        web_dropdown.pack()
+
+        def submit():
+            settings_win.destroy()
+
+        submit_btn = tk.Button(settings_win, text="OK", command=submit)
+        submit_btn.pack(pady=10)
+
+        self.root.wait_window(settings_win)
+    
+        return php_version_var.get(), db_version_var.get(), webserver_var.get()
 
     def create_new_project(self):
         name = simpledialog.askstring("New Project", "Enter project name:")
         if name:
+            php_version, db_version, webserver_type = self.ask_project_settings()
             path = PROJECTS_DIR / name
             path.mkdir(parents=True, exist_ok=True)
-            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--docroot", "public", "--create-docroot", "--project-type", "php"], cwd=path)
+            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--docroot", "public", "--create-docroot",
+                            "--project-type", "php", "--php-version", php_version, "--webserver-type", webserver_type], cwd=path)
+            config_file = path / ".ddev" / "config.yaml"
+            if config_file.exists():
+                with open(config_file, "r") as f:
+                    config = yaml.safe_load(f)
+                config["dbimage"] = db_version
+                with open(config_file, "w") as f:
+                    yaml.safe_dump(config, f)
             self.refresh_projects()
 
     def create_wordpress_project(self):
         name = simpledialog.askstring("New WordPress Project", "Enter project name:")
         if name:
+            php_version, db_version, webserver_type = self.ask_project_settings()
             path = PROJECTS_DIR / name
             path.mkdir(parents=True, exist_ok=True)
-            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--project-type", "wordpress", "--docroot", "web", "--create-docroot"], cwd=path)
+            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--project-type", "wordpress",
+                            "--docroot", "web", "--create-docroot", "--php-version", php_version,
+                            "--webserver-type", webserver_type], cwd=path)
+            config_file = path / ".ddev" / "config.yaml"
+            if config_file.exists():
+                with open(config_file, "r") as f:
+                    config = yaml.safe_load(f)
+                config["dbimage"] = db_version
+                with open(config_file, "w") as f:
+                    yaml.safe_dump(config, f)
+
             subprocess.run([DDEV_COMMAND, "start"], cwd=path)
-            subprocess.run([DDEV_COMMAND, "wp", "--path=web" , "core", "download"], cwd=path)
-            subprocess.run([DDEV_COMMAND, "wp", "--path=web" , "core", "install", "--url=http://{}".format(name + ".ddev.site"),
-                            "--title=WordPress Site", "--admin_user=admin", "--admin_password=admin", "--admin_email=admin@example.com"], cwd=path)
+            subprocess.run([DDEV_COMMAND, "wp", "--path=web", "core", "download"], cwd=path)
+            subprocess.run([
+                DDEV_COMMAND, "wp", "--path=web", "core", "install",
+                "--url=http://{}.ddev.site".format(name),
+                "--title=WordPress Site",
+                "--admin_user=admin",
+                "--admin_password=admin",
+                "--admin_email=admin@example.com"
+            ], cwd=path)
+
             wp_config = path / "web" / "wp-config.php"
             try:
                 with open(wp_config, "a") as f:
+                    f.write("\ndefine('WP_DEBUG', true);\n")
                     f.write("define('WP_DEBUG_LOG', true);\n")
                 messagebox.showinfo("Success", "WordPress project created and configured.")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to modify wp-config.php: {e}")
+
             self.refresh_projects()
+
+        def submit():
+            settings_win.destroy()
+
+        submit_btn = tk.Button(settings_win, text="OK", command=submit)
+        submit_btn.pack(pady=10)
+
+        self.root.wait_window(settings_win)
+
+        return php_version_var.get(), db_version_var.get(), webserver_var.get()
 
 if __name__ == "__main__":
     PROJECTS_DIR.mkdir(exist_ok=True)
