@@ -12,10 +12,13 @@ PROJECTS_DIR = Path(__file__).resolve().parent / "websites"
 REFRESH_INTERVAL = 5000  # in milliseconds
 DDEV_COMMAND = "ddev"
 if platform.system() == "Windows":
-    DDEV_COMMAND = "C:\\Program Files\\ddev\\ddev.exe"  # Adjust this path if needed
+    DDEV_COMMAND = "C:\\Program Files\\ddev\\ddev.exe"
 
 PHP_VERSIONS = ["5.6", "7.0", "7.1", "7.2", "7.3", "7.4", "8.0", "8.1", "8.2", "8.3", "8.4"]
-DB_VERSIONS = ["mariadb:5.5", "mariadb:10.0", "mariadb:10.1", "mariadb:10.2", "mariadb:10.3", "mariadb:10.4", "mariadb:10.5", "mariadb:10.6", "mariadb:10.8", "mariadb:10.11", "mariadb:11.4", "mysql:5.5", "mysql:5.6", "mysql:5.7", "mysql:8.0", "mysql:8.1", "mysql:8.2", "mysql:8.3", "mysql:8.4"]
+DB_VERSIONS = [
+    "mariadb:5.5", "mariadb:10.0", "mariadb:10.1", "mariadb:10.2", "mariadb:10.3", "mariadb:10.4", "mariadb:10.5", "mariadb:10.6", "mariadb:10.8", "mariadb:10.11", "mariadb:11.4",
+    "mysql:5.5", "mysql:5.6", "mysql:5.7", "mysql:8.0", "mysql:8.1", "mysql:8.2", "mysql:8.3", "mysql:8.4"
+]
 WEBSERVERS = ["apache-fpm", "nginx-fpm", "generic"]
 
 class DDEVManagerGUI:
@@ -59,6 +62,9 @@ class DDEVManagerGUI:
             ("Export DB", self.export_db),
             ("Enable Xdebug (Debug)", lambda: self.enable_xdebug("debug")),
             ("Enable Xdebug (Profile)", lambda: self.enable_xdebug("profile")),
+            ("Add Vhost", self.add_vhost),
+            ("Enable Redis", lambda: self.enable_service("redis")),
+            ("Enable Memcached", lambda: self.enable_service("memcached"))
         ]
 
         for text, command in buttons:
@@ -144,12 +150,7 @@ class DDEVManagerGUI:
 
         try:
             php_config_dir.mkdir(parents=True, exist_ok=True)
-
             output_dir = "/var/www/html/.ddev/"
-            if mode not in ["debug", "profile"]:
-                messagebox.showerror("Error", "Unsupported Xdebug mode. Choose 'debug' or 'profile'.")
-                return
-
             php_ini_content = (
                 "[PHP]\n"
                 f"xdebug.mode={mode}\n"
@@ -162,15 +163,10 @@ class DDEVManagerGUI:
             with open(php_ini_file, "w") as f:
                 f.write(php_ini_content)
 
-            restart_result = subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path, capture_output=True, text=True)
-            if restart_result.returncode != 0:
-                raise RuntimeError(restart_result.stderr)
+            subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path)
+            subprocess.run([DDEV_COMMAND, "xdebug", "enable"], cwd=project_path)
 
-            enable_result = subprocess.run([DDEV_COMMAND, "xdebug", "enable"], cwd=project_path, capture_output=True, text=True)
-            if enable_result.returncode != 0:
-                raise RuntimeError(enable_result.stderr)
-
-            messagebox.showinfo("Success", f"Xdebug {mode} mode enabled (php.ini written, container restarted, xdebug activated).")
+            messagebox.showinfo("Success", f"Xdebug {mode} mode enabled.")
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to enable Xdebug: {e}")
@@ -180,28 +176,24 @@ class DDEVManagerGUI:
         settings_win.title("Project Settings")
         settings_win.grab_set()
 
-        tk.Label(settings_win, text="PHP Version:").pack()
         php_version_var = tk.StringVar(value=PHP_VERSIONS[0])
-        php_dropdown = ttk.Combobox(settings_win, textvariable=php_version_var, values=PHP_VERSIONS)
-        php_dropdown.pack()
+        db_version_var = tk.StringVar(value=DB_VERSIONS[0])
+        webserver_var = tk.StringVar(value=WEBSERVERS[0])
+
+        tk.Label(settings_win, text="PHP Version:").pack()
+        ttk.Combobox(settings_win, textvariable=php_version_var, values=PHP_VERSIONS).pack()
 
         tk.Label(settings_win, text="Database:").pack()
-        db_version_var = tk.StringVar(value=DB_VERSIONS[0])
-        db_dropdown = ttk.Combobox(settings_win, textvariable=db_version_var,     values=DB_VERSIONS)
-        db_dropdown.pack()
+        ttk.Combobox(settings_win, textvariable=db_version_var, values=DB_VERSIONS).pack()
+
         tk.Label(settings_win, text="Webserver:").pack()
-        webserver_var = tk.StringVar(value=WEBSERVERS[0])
-        web_dropdown = ttk.Combobox(settings_win, textvariable=webserver_var, values=WEBSERVERS)
-        web_dropdown.pack()
+        ttk.Combobox(settings_win, textvariable=webserver_var, values=WEBSERVERS).pack()
 
-        def submit():
-            settings_win.destroy()
-
-        submit_btn = tk.Button(settings_win, text="OK", command=submit)
+        submit_btn = tk.Button(settings_win, text="OK", command=settings_win.destroy)
         submit_btn.pack(pady=10)
 
         self.root.wait_window(settings_win)
-    
+
         return php_version_var.get(), db_version_var.get(), webserver_var.get()
 
     def create_new_project(self):
@@ -219,6 +211,7 @@ class DDEVManagerGUI:
                 config["dbimage"] = db_version
                 with open(config_file, "w") as f:
                     yaml.safe_dump(config, f)
+            subprocess.run([DDEV_COMMAND, "start"], cwd=path)
             self.refresh_projects()
 
     def create_wordpress_project(self):
@@ -227,9 +220,8 @@ class DDEVManagerGUI:
             php_version, db_version, webserver_type = self.ask_project_settings()
             path = PROJECTS_DIR / name
             path.mkdir(parents=True, exist_ok=True)
-            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--project-type", "wordpress",
-                            "--docroot", "web", "--create-docroot", "--php-version", php_version,
-                            "--webserver-type", webserver_type], cwd=path)
+            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--project-type", "wordpress", "--docroot", "web", "--create-docroot",
+                            "--php-version", php_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             if config_file.exists():
                 with open(config_file, "r") as f:
@@ -237,38 +229,82 @@ class DDEVManagerGUI:
                 config["dbimage"] = db_version
                 with open(config_file, "w") as f:
                     yaml.safe_dump(config, f)
-
             subprocess.run([DDEV_COMMAND, "start"], cwd=path)
             subprocess.run([DDEV_COMMAND, "wp", "--path=web", "core", "download"], cwd=path)
-            subprocess.run([
-                DDEV_COMMAND, "wp", "--path=web", "core", "install",
-                "--url=http://{}.ddev.site".format(name),
-                "--title=WordPress Site",
-                "--admin_user=admin",
-                "--admin_password=admin",
-                "--admin_email=admin@example.com"
-            ], cwd=path)
-
+            subprocess.run([DDEV_COMMAND, "wp", "--path=web", "core", "install", "--url=http://{}.ddev.site".format(name),
+                            "--title=WordPress Site", "--admin_user=admin", "--admin_password=admin", "--admin_email=admin@example.com"], cwd=path)
             wp_config = path / "web" / "wp-config.php"
             try:
                 with open(wp_config, "a") as f:
                     f.write("\ndefine('WP_DEBUG', true);\n")
                     f.write("define('WP_DEBUG_LOG', true);\n")
+                    f.write("define('WP_REDIS_HOST', 'redis');\n")
+                    f.write("define('WP_REDIS_PORT', 6379);\n")
+                    f.write("define('WP_REDIS_TIMEOUT', 1);\n")
+                    f.write("define('WP_REDIS_READ_TIMEOUT', 1);\n")
+                    f.write("define('WP_REDIS_DATABASE', 0);\n")
                 messagebox.showinfo("Success", "WordPress project created and configured.")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to modify wp-config.php: {e}")
-
             self.refresh_projects()
+            
+    def add_vhost(self):
+        if not self.selected_project:
+            messagebox.showerror("Error", "No project selected.")
+            return
 
-        def submit():
-            settings_win.destroy()
+        hostname = simpledialog.askstring("Add Vhost", "Enter hostname (example: sub.mysite.ddev.site):")
+        if not hostname:
+            return
 
-        submit_btn = tk.Button(settings_win, text="OK", command=submit)
-        submit_btn.pack(pady=10)
+        project_path = PROJECTS_DIR / self.selected_project
 
-        self.root.wait_window(settings_win)
+        try:
+        
+            subprocess.run([DDEV_COMMAND, "config", "--auto", "--additional-hostnames", hostname], cwd=project_path, check=True)
+            subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path)
+            messagebox.showinfo("Success", f"Hostname {hostname} added")
 
-        return php_version_var.get(), db_version_var.get(), webserver_var.get()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to add vhost: {e}")
+        
+    def enable_service(self, service):
+        if not self.selected_project:
+            messagebox.showerror("Error", "No project selected.")
+            return
+        project_path = PROJECTS_DIR / self.selected_project
+        service_files = {
+        "redis": ("docker-compose.redis.yaml", """
+version: '3.6'
+services:
+  redis:
+    image: redis:7
+    container_name: ddev-${DDEV_SITENAME}-redis
+    restart: always
+    ports:
+      - "6379"
+    """),
+            "memcached": ("docker-compose.memcached.yaml", """
+version: '3.6'
+services:
+  memcached:
+    image: memcached:latest
+    container_name: ddev-${DDEV_SITENAME}-memcached
+    restart: always
+    ports:
+      - "11211"
+    """)
+        }
+        filename, content = service_files.get(service, (None, None))
+        if not filename:
+            messagebox.showerror("Error", f"Unknown service {service}")
+            return
+        service_file = project_path / ".ddev" / filename
+        with open(service_file, "w") as f:
+            f.write(content.strip())
+        subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path)
+        messagebox.showinfo("Success", f"{service.capitalize()} enabled and project restarted.")
+
 
 if __name__ == "__main__":
     PROJECTS_DIR.mkdir(exist_ok=True)
