@@ -261,7 +261,7 @@ class DDEVManagerGUI:
                 messagebox.showinfo("Success", "WordPress project created and configured.")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to modify wp-config.php: {e}")
-            
+            self.refresh_projects()
     def add_vhost(self):
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
