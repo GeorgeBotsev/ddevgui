@@ -156,7 +156,7 @@ class DDEVManagerGUI:
                 f"xdebug.mode={mode}\n"
                 "xdebug.start_with_request=yes\n"
                 "xdebug.use_compression=false\n"
-                "xdebug.profiler_output_name=trace.%c%p%r%u.out\n"
+                "xdebug.profiler_output_name=profiler.%H.%R.%t.out\n"
                 f"xdebug.output_dir=\"{output_dir}\"\n"
             )
 
