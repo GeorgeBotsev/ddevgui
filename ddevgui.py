@@ -235,18 +235,32 @@ class DDEVManagerGUI:
                             "--title=WordPress Site", "--admin_user=admin", "--admin_password=admin", "--admin_email=admin@example.com"], cwd=path)
             wp_config = path / "web" / "wp-config.php"
             try:
-                with open(wp_config, "a") as f:
-                    f.write("\ndefine('WP_DEBUG', true);\n")
-                    f.write("define('WP_DEBUG_LOG', true);\n")
-                    f.write("define('WP_REDIS_HOST', 'redis');\n")
-                    f.write("define('WP_REDIS_PORT', 6379);\n")
-                    f.write("define('WP_REDIS_TIMEOUT', 1);\n")
-                    f.write("define('WP_REDIS_READ_TIMEOUT', 1);\n")
-                    f.write("define('WP_REDIS_DATABASE', 0);\n")
+                with open(wp_config, "r") as f:
+                    lines = f.readlines()
+            
+                insert_index = next((i for i, line in enumerate(lines) if "/* That's all, stop editing!" in line), len(lines))
+
+                debug_config = [
+                    "define('WP_DEBUG', true);\n",
+                    "define('WP_DEBUG_LOG', true);\n",
+                    "define('WP_REDIS_HOST', 'redis');\n",
+                    "define('WP_REDIS_PORT', 6379);\n",
+                    "define('WP_REDIS_TIMEOUT', 1);\n",
+                    "define('WP_REDIS_READ_TIMEOUT', 1);\n",
+                    "define('WP_REDIS_DATABASE', 0);\n"
+                ]
+
+                existing_content = ''.join(lines)
+                to_insert = ["\n"] + [line for line in debug_config if line not in existing_content]
+            
+                if len(to_insert) > 1:  # If anything is new (more than just the "\n")
+                    lines[insert_index:insert_index] = to_insert
+                    with open(wp_config, "w") as f:
+                        f.writelines(lines)
+            
                 messagebox.showinfo("Success", "WordPress project created and configured.")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to modify wp-config.php: {e}")
-            self.refresh_projects()
             
     def add_vhost(self):
         if not self.selected_project:
