@@ -209,6 +209,7 @@ class DDEVManagerGUI:
                 with open(config_file, "r") as f:
                     config = yaml.safe_load(f)
                 config["dbimage"] = db_version
+                config["disable_settings_management"] = True
                 with open(config_file, "w") as f:
                     yaml.safe_dump(config, f)
             subprocess.run([DDEV_COMMAND, "start"], cwd=path)
@@ -227,6 +228,7 @@ class DDEVManagerGUI:
                 with open(config_file, "r") as f:
                     config = yaml.safe_load(f)
                 config["dbimage"] = db_version
+                config["disable_settings_management"] = True
                 with open(config_file, "w") as f:
                     yaml.safe_dump(config, f)
             subprocess.run([DDEV_COMMAND, "start"], cwd=path)
