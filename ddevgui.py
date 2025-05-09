@@ -57,6 +57,8 @@ class DDEVManagerGUI:
         buttons = [
             ("Start", self.start_project),
             ("Stop", self.stop_project),
+            ("Open Browser", self.open_browser),
+            ("Open Adminer", self.open_adminer),
             ("Delete", self.delete_project),
             ("Import DB", self.import_db),
             ("Export DB", self.export_db),
@@ -108,6 +110,14 @@ class DDEVManagerGUI:
     def stop_project(self):
         if self.selected_project:
             self.run_ddev_command(self.selected_project, ["stop"])
+
+    def open_browser(self):
+        if self.selected_project:
+            self.run_ddev_command(self.selected_project, ["launch"])
+
+    def open_adminer(self):
+        if self.selected_project:
+            self.run_ddev_command(self.selected_project, ["adminer"])
 
     def delete_project(self):
         if self.selected_project:
@@ -205,6 +215,9 @@ class DDEVManagerGUI:
             subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--docroot", "public", "--create-docroot",
                             "--project-type", "php", "--php-version", php_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
+            subprocess.run([
+                    DDEV_COMMAND, "get", "ddev/ddev-adminer"
+            ], cwd=path)
             if config_file.exists():
                 with open(config_file, "r") as f:
                     config = yaml.safe_load(f)
@@ -224,6 +237,9 @@ class DDEVManagerGUI:
             subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--project-type", "wordpress", "--docroot", "web", "--create-docroot",
                             "--php-version", php_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
+            subprocess.run([
+                    DDEV_COMMAND, "get", "ddev/ddev-adminer"
+            ], cwd=path)            
             if config_file.exists():
                 with open(config_file, "r") as f:
                     config = yaml.safe_load(f)
@@ -264,6 +280,7 @@ class DDEVManagerGUI:
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to modify wp-config.php: {e}")
             self.refresh_projects()
+            
     def add_vhost(self):
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
