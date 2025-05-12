@@ -64,6 +64,7 @@ class DDEVManagerGUI:
             ("Stop", self.stop_project),
             ("Open Browser", self.open_browser),
             ("Open Adminer", self.open_adminer),
+            ("Open Mailpit", self.open_mailpit),
             ("Delete", self.delete_project),
             ("Import DB", self.import_db),
             ("Export DB", self.export_db),
@@ -123,6 +124,10 @@ class DDEVManagerGUI:
     def open_adminer(self):
         if self.selected_project:
             self.run_ddev_command(self.selected_project, ["adminer"])
+
+    def open_mailpit(self):
+        if self.selected_project:
+            self.run_ddev_command(self.selected_project, ["mailpit"])
 
     def delete_project(self):
         if self.selected_project:
