@@ -81,7 +81,7 @@ A cross-platform desktop GUI for managing [DDEV](https://ddev.readthedocs.io/) w
 
 ## 📸 Screenshot
 
-> *(Insert screenshot here)*
+![DDEV GUI Screenshot](screenshot.png)
 
 ---
 
