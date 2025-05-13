@@ -87,4 +87,4 @@ A cross-platform desktop GUI for managing [DDEV](https://ddev.readthedocs.io/) w
 
 ## 🧪 License
 
-MIT License
+GNU GENERAL PUBLIC LICENSE v2.0
