@@ -173,6 +173,8 @@ class DDEVManagerGUI:
             output_dir = "/var/www/html/.ddev/"
             php_ini_content = (
                 "[PHP]\n"
+                "upload_max_filesize = 4084M\n"
+                "post_max_size = 4084M\n"
                 f"xdebug.mode={mode}\n"
                 "xdebug.start_with_request=yes\n"
                 "xdebug.use_compression=false\n"
@@ -223,7 +225,7 @@ class DDEVManagerGUI:
             path = PROJECTS_DIR / name
             path.mkdir(parents=True, exist_ok=True)
             subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--docroot", "public", "--create-docroot",
-                            "--project-type", "php", "--php-version", php_version, "--webserver-type", webserver_type], cwd=path)
+                            "--project-type", "php", "--php-version", php_version, "--database", db_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
                     DDEV_COMMAND, "get", "ddev/ddev-adminer"
@@ -231,7 +233,6 @@ class DDEVManagerGUI:
             if config_file.exists():
                 with open(config_file, "r") as f:
                     config = yaml.safe_load(f)
-                config["dbimage"] = db_version
                 config["disable_settings_management"] = True
                 with open(config_file, "w") as f:
                     yaml.safe_dump(config, f)
@@ -245,7 +246,7 @@ class DDEVManagerGUI:
             path = PROJECTS_DIR / name
             path.mkdir(parents=True, exist_ok=True)
             subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--project-type", "wordpress", "--docroot", "web", "--create-docroot",
-                            "--php-version", php_version, "--webserver-type", webserver_type], cwd=path)
+                            "--php-version", php_version, "--database", db_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
                     DDEV_COMMAND, "get", "ddev/ddev-adminer"
@@ -253,7 +254,6 @@ class DDEVManagerGUI:
             if config_file.exists():
                 with open(config_file, "r") as f:
                     config = yaml.safe_load(f)
-                config["dbimage"] = db_version
                 config["disable_settings_management"] = True
                 with open(config_file, "w") as f:
                     yaml.safe_dump(config, f)
