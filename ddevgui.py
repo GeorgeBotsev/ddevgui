@@ -7,10 +7,16 @@ from pathlib import Path
 import platform
 import yaml
 import base64
+import json
 
-# Constants
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".ddevgui.json")
+DEFAULTS = {
+    "php_version": "8.0",
+    "db_version": "mysql:8.0",
+    "webserver": "apache-fpm"
+}
 PROJECTS_DIR = Path(__file__).resolve().parent / "websites"
-REFRESH_INTERVAL = 5000  # in milliseconds
+REFRESH_INTERVAL = 5000
 DDEV_COMMAND = "ddev"
 if platform.system() == "Windows":
     DDEV_COMMAND = "C:\\Program Files\\ddev\\ddev.exe"
@@ -194,13 +200,17 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             messagebox.showerror("Error", f"Failed to enable Xdebug: {e}")
 
     def ask_project_settings(self):
+        settings = load_defaults()
+
+        result = {"php": None, "db": None, "web": None}
+
         settings_win = tk.Toplevel(self.root)
         settings_win.title("Project Settings")
         settings_win.grab_set()
 
-        php_version_var = tk.StringVar(value=PHP_VERSIONS[0])
-        db_version_var = tk.StringVar(value=DB_VERSIONS[0])
-        webserver_var = tk.StringVar(value=WEBSERVERS[0])
+        php_version_var = tk.StringVar(value=settings.get("php_version", PHP_VERSIONS[0]))
+        db_version_var = tk.StringVar(value=settings.get("db_version", DB_VERSIONS[0]))
+        webserver_var = tk.StringVar(value=settings.get("webserver", WEBSERVERS[0]))
 
         tk.Label(settings_win, text="PHP Version:").pack()
         ttk.Combobox(settings_win, textvariable=php_version_var, values=PHP_VERSIONS).pack()
@@ -211,12 +221,23 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         tk.Label(settings_win, text="Webserver:").pack()
         ttk.Combobox(settings_win, textvariable=webserver_var, values=WEBSERVERS).pack()
 
-        submit_btn = tk.Button(settings_win, text="OK", command=settings_win.destroy)
+        def on_submit():
+            result["php"] = php_version_var.get()
+            result["db"] = db_version_var.get()
+            result["web"] = webserver_var.get()
+            save_defaults(result["php"], result["db"], result["web"])
+            settings_win.destroy()
+
+        submit_btn = tk.Button(settings_win, text="OK", command=on_submit)
         submit_btn.pack(pady=10)
 
         self.root.wait_window(settings_win)
+    
+        if None in result.values():
+            return None  # User closed the window or didn't submit
+    
+        return result["php"], result["db"], result["web"]
 
-        return php_version_var.get(), db_version_var.get(), webserver_var.get()
 
     def create_new_project(self):
         name = simpledialog.askstring("New Project", "Enter project name:")
@@ -348,6 +369,26 @@ services:
         subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path)
         messagebox.showinfo("Success", f"{service.capitalize()} enabled and project restarted.")
 
+def load_defaults():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return DEFAULTS.copy()
+
+def save_defaults(php_version, db_version, webserver):
+    data = {
+        "php_version": php_version,
+        "db_version": db_version,
+        "webserver": webserver
+    }
+    try:
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except IOError as e:
+        print(f"Error saving config: {e}")
 
 if __name__ == "__main__":
     PROJECTS_DIR.mkdir(exist_ok=True)
