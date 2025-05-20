@@ -166,38 +166,59 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 self.run_ddev_command(self.selected_project, ["export-db", "--file", export_path])
 
     def enable_xdebug(self, mode):
+        
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
             return
 
-        project_path = PROJECTS_DIR / self.selected_project
-        php_config_dir = project_path / ".ddev" / "php"
-        php_ini_file = php_config_dir / "php.ini"
-
         try:
-            php_config_dir.mkdir(parents=True, exist_ok=True)
-            output_dir = "/var/www/html/.ddev/"
-            php_ini_content = (
-                "[PHP]\n"
-                "upload_max_filesize = 4084M\n"
-                "post_max_size = 4084M\n"
-                f"xdebug.mode={mode}\n"
-                "xdebug.start_with_request=yes\n"
-                "xdebug.use_compression=false\n"
-                "xdebug.profiler_output_name=profiler.%H.%R.%t.out\n"
-                f"xdebug.output_dir=\"{output_dir}\"\n"
-            )
+            project_path = PROJECTS_DIR / self.selected_project
+            php_config_dir = project_path / ".ddev" / "php"
+            php_ini_file = php_config_dir / "php.ini"
+            ini_exists = os.path.isfile(php_ini_file)
+            needs_restart = False
 
-            with open(php_ini_file, "w") as f:
-                f.write(php_ini_content)
+            if ini_exists:
+                with open(php_ini_file, "r") as file:
+                    lines = file.readlines()
 
-            subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path)
-            subprocess.run([DDEV_COMMAND, "xdebug", "enable"], cwd=project_path)
+                found_mode_line = False
+                updated_lines = []
 
-            messagebox.showinfo("Success", f"Xdebug {mode} mode enabled.")
+                for line in lines:
+                    if line.strip().startswith("xdebug.mode"):
+                        found_mode_line = True
+                        current_mode = line.strip().split("=")[1].strip()
+                        if current_mode != mode:
+                            updated_lines.append(f"xdebug.mode={mode}\n")
+                            needs_restart = True
+                        else:
+                            updated_lines.append(line)
+                    else:
+                        updated_lines.append(line)
+
+                if not found_mode_line:
+                    updated_lines.append(f"xdebug.mode={mode}\n")
+                    needs_restart = True
+
+                with open(php_ini_file, "w") as file:
+                    file.writelines(updated_lines)
+
+            else:
+                os.makedirs(os.path.dirname(php_ini_file), exist_ok=True)
+                with open(php_ini_file, "w") as file:
+                    file.write(f"xdebug.mode={mode}\n")
+                needs_restart = True
+
+            if needs_restart:
+                subprocess.run([DDEV_COMMAND, "restart", self.selected_project], cwd=project_path, check=True)
+
+            subprocess.run([DDEV_COMMAND, "xdebug", "on"], cwd=project_path, check=True)
+
+            messagebox.showinfo("Success", f"Xdebug '{mode}' mode set and enabled.")
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to enable Xdebug: {e}")
+            messagebox.showerror("Error", f"Failed to set Xdebug mode: {e}")
 
     def ask_project_settings(self):
         settings = load_defaults()
@@ -257,7 +278,33 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 config["disable_settings_management"] = True
                 with open(config_file, "w") as f:
                     yaml.safe_dump(config, f)
+
+        project_path = path
+        php_config_dir = project_path / ".ddev" / "php"
+        php_ini_file = php_config_dir / "php.ini"
+
+        try:
+            php_config_dir.mkdir(parents=True, exist_ok=True)
+            output_dir = "/var/www/html/.ddev/"
+            php_ini_content = (
+                "[PHP]\n"
+                "upload_max_filesize = 4084M\n"
+                "post_max_size = 4084M\n"
+                "memory_limit = 256M\n"
+                f"xdebug.mode=debug\n"
+                "xdebug.start_with_request=yes\n"
+                "xdebug.use_compression=false\n"
+                "xdebug.profiler_output_name=profiler.%H.%R.%t.out\n"
+                f"xdebug.output_dir=\"{output_dir}\"\n"
+            )
+
+            with open(php_ini_file, "w") as f:
+                f.write(php_ini_content)
+        
             subprocess.run([DDEV_COMMAND, "start"], cwd=path)
+            self.refresh_projects()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed: {e}")
             self.refresh_projects()
 
     def create_wordpress_project(self):
@@ -278,14 +325,41 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 config["disable_settings_management"] = True
                 with open(config_file, "w") as f:
                     yaml.safe_dump(config, f)
+                    project_path = path
+        php_config_dir = project_path / ".ddev" / "php"
+        php_ini_file = php_config_dir / "php.ini"
+
+        try:
+            php_config_dir.mkdir(parents=True, exist_ok=True)
+            output_dir = "/var/www/html/.ddev/"
+            php_ini_content = (
+                "[PHP]\n"
+                "upload_max_filesize = 4084M\n"
+                "post_max_size = 4084M\n"
+                "memory_limit = 256M\n"
+                f"xdebug.mode=debug\n"
+                "xdebug.start_with_request=yes\n"
+                "xdebug.use_compression=false\n"
+                "xdebug.profiler_output_name=profiler.%H.%R.%t.out\n"
+                f"xdebug.output_dir=\"{output_dir}\"\n"
+            )
+
+            with open(php_ini_file, "w") as f:
+                f.write(php_ini_content)
+            
             subprocess.run([DDEV_COMMAND, "start"], cwd=path)
             subprocess.run([DDEV_COMMAND, "wp", "--path=web", "core", "download"], cwd=path)
             subprocess.run([DDEV_COMMAND, "wp", "--path=web", "core", "install", "--url=http://{}.ddev.site".format(name),
                             "--title=WordPress Site", "--admin_user=admin", "--admin_password=admin", "--admin_email=admin@example.com"], cwd=path)
             wp_config = path / "web" / "wp-config.php"
-            try:
-                with open(wp_config, "r") as f:
-                    lines = f.readlines()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed: {e}")
+        
+
+        try:
+            with open(wp_config, "r") as f:
+                lines = f.readlines()
             
                 insert_index = next((i for i, line in enumerate(lines) if "/* That's all, stop editing!" in line), len(lines))
 
@@ -308,9 +382,9 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                         f.writelines(lines)
             
                 messagebox.showinfo("Success", "WordPress project created and configured.")
-            except Exception as e:
+        except Exception as e:
                 messagebox.showerror("Error", f"Failed to modify wp-config.php: {e}")
-            self.refresh_projects()
+        self.refresh_projects()
             
     def add_vhost(self):
         if not self.selected_project:
