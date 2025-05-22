@@ -91,8 +91,6 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             result = subprocess.run([DDEV_COMMAND] + command, cwd=project_path, capture_output=True, text=True)
             if result.returncode != 0:
                 messagebox.showerror("Error", result.stderr)
-            else:
-                messagebox.showinfo("Success", result.stdout)
         except Exception as e:
             messagebox.showerror("Exception", str(e))
 
