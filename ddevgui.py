@@ -68,6 +68,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         buttons = [
             ("Start", self.start_project),
             ("Stop", self.stop_project),
+            ("Restart", self.restart_project),
             ("Open Browser", self.open_browser),
             ("Open Adminer", self.open_adminer),
             ("Open Mailpit", self.open_mailpit),
@@ -91,6 +92,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             result = subprocess.run([DDEV_COMMAND] + command, cwd=project_path, capture_output=True, text=True)
             if result.returncode != 0:
                 messagebox.showerror("Error", result.stderr)
+
         except Exception as e:
             messagebox.showerror("Exception", str(e))
 
@@ -120,6 +122,10 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
     def stop_project(self):
         if self.selected_project:
             self.run_ddev_command(self.selected_project, ["stop"])
+
+    def restart_project(self):
+        if self.selected_project:
+            self.run_ddev_command(self.selected_project, ["restart"])
 
     def open_browser(self):
         if self.selected_project:
@@ -268,7 +274,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                             "--project-type", "php", "--php-version", php_version, "--database", db_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
-                    DDEV_COMMAND, "get", "ddev/ddev-adminer"
+                    DDEV_COMMAND, "add-on get", "ddev/ddev-adminer"
             ], cwd=path)
             if config_file.exists():
                 with open(config_file, "r") as f:
@@ -315,7 +321,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                             "--php-version", php_version, "--database", db_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
-                    DDEV_COMMAND, "get", "ddev/ddev-adminer"
+                    DDEV_COMMAND, "add-on get", "ddev/ddev-adminer"
             ], cwd=path)            
             if config_file.exists():
                 with open(config_file, "r") as f:
@@ -382,6 +388,43 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 messagebox.showinfo("Success", "WordPress project created and configured.")
         except Exception as e:
                 messagebox.showerror("Error", f"Failed to modify wp-config.php: {e}")
+        
+        import base64
+
+        transparent_png_base64 = (
+            b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAKbNPioAAAAASUVORK5CYII='
+        )
+
+        try:
+            placeholder_path = path / "web" / "placeholder.png"
+            placeholder_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(placeholder_path, "wb") as img_file:
+                img_file.write(base64.b64decode(transparent_png_base64))
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create placeholder.png: {e}")
+
+        htaccess_path = path / "web" / ".htaccess"
+
+        custom_rules = (
+            "<IfModule mod_rewrite.c>\n"
+            "RewriteEngine On\n"
+            "RewriteCond %{REQUEST_FILENAME} !-f\n"
+            "RewriteRule \\.(jpe?g|png|gif|webp|bmp|svg|ico)$ /placeholder.png [L]\n"
+            "</IfModule>\n\n"
+        )
+
+        try:
+            if htaccess_path.exists():
+                with open(htaccess_path, "r") as f:
+                    original_contents = f.read()
+            else:
+                original_contents = ""
+        
+            with open(htaccess_path, "w") as f:
+                f.write(custom_rules + original_contents)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to modify .htaccess: {e}")
+
         self.refresh_projects()
             
     def add_vhost(self):
