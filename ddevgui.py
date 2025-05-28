@@ -274,7 +274,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                             "--project-type", "php", "--php-version", php_version, "--database", db_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
-                    DDEV_COMMAND, "add-on get", "ddev/ddev-adminer"
+                    DDEV_COMMAND, "add-on", "get", "ddev/ddev-adminer"
             ], cwd=path)
             if config_file.exists():
                 with open(config_file, "r") as f:
@@ -311,6 +311,42 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             messagebox.showerror("Error", f"Failed: {e}")
             self.refresh_projects()
 
+        import base64
+
+        transparent_png_base64 = (
+            b'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAKbNPioAAAAASUVORK5CYII='
+        )
+
+        try:
+            placeholder_path = path / "public" / "placeholder.png"
+            placeholder_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(placeholder_path, "wb") as img_file:
+                img_file.write(base64.b64decode(transparent_png_base64))
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create placeholder.png: {e}")
+
+        htaccess_path = path / "public" / ".htaccess"
+
+        custom_rules = (
+            "<IfModule mod_rewrite.c>\n"
+            "RewriteEngine On\n"
+            "RewriteCond %{REQUEST_FILENAME} !-f\n"
+            "RewriteRule \\.(jpe?g|png|gif|webp|bmp|svg|ico)$ /placeholder.png [L]\n"
+            "</IfModule>\n\n"
+        )
+
+        try:
+            if htaccess_path.exists():
+                with open(htaccess_path, "r") as f:
+                    original_contents = f.read()
+            else:
+                original_contents = ""
+        
+            with open(htaccess_path, "w") as f:
+                f.write(custom_rules + original_contents)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to modify .htaccess: {e}")
+
     def create_wordpress_project(self):
         name = simpledialog.askstring("New WordPress Project", "Enter project name:")
         if name:
@@ -321,7 +357,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                             "--php-version", php_version, "--database", db_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
-                    DDEV_COMMAND, "add-on get", "ddev/ddev-adminer"
+                    DDEV_COMMAND, "add-on", "get", "ddev/ddev-adminer"
             ], cwd=path)            
             if config_file.exists():
                 with open(config_file, "r") as f:
