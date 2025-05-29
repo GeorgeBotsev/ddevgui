@@ -97,10 +97,44 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             messagebox.showerror("Exception", str(e))
 
     def refresh_projects(self):
-        self.projects = [d.name for d in PROJECTS_DIR.iterdir() if (d / ".ddev").exists()]
         self.project_listbox.delete(0, tk.END)
-        for project in self.projects:
-            self.project_listbox.insert(tk.END, project)
+    
+        ddev_entries = self.get_ddev_raw_entries()
+    
+        # Map from resolved path to status
+        status_by_path = {
+            str(Path(entry["approot"]).resolve()): entry["status"]
+            for entry in ddev_entries
+        }
+    
+        for d in PROJECTS_DIR.iterdir():
+            if not (d / ".ddev").exists():
+                continue
+    
+            resolved_path = str(d.resolve())
+            status = status_by_path.get(resolved_path, "unknown")
+    
+            if status == "running":
+                symbol = "[Running]"
+            elif status == "paused":
+                symbol = "[Paused]"
+            elif status == "stopped":
+                symbol = "[Stopped]"
+            else:
+                symbol = "[o]"
+
+            label = f"{symbol} {d.name}"
+            self.project_listbox.insert(tk.END, label)
+
+
+    def get_ddev_raw_entries(self):
+        try:
+            result = subprocess.run(["ddev", "list", "-j"], capture_output=True, check=True, text=True)
+            data = json.loads(result.stdout)
+            return data.get("raw", [])
+        except Exception as e:
+            print("Error running ddev list:", e)
+            return []
 
     def refresh_projects_periodically(self):
         self.refresh_projects()
@@ -111,8 +145,9 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             selection = event.widget.curselection()
             if selection:
                 index = selection[0]
-                self.selected_project = self.projects[index]
-        except IndexError:
+                label = self.project_listbox.get(index)
+                self.selected_project = label.split(' ', 1)[1]  # Skip symbol
+        except Exception:
             self.selected_project = None
 
     def start_project(self):
