@@ -71,6 +71,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             ("Restart", self.restart_project),
             ("Open Browser", self.open_browser),
             ("Open Adminer", self.open_adminer),
+            ("Open Folder", self.open_project_folder),
             ("Open Mailpit", self.open_mailpit),
             ("Delete", self.delete_project),
             ("Import DB", self.import_db),
@@ -87,45 +88,72 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             btn.pack(fill=tk.X, pady=2)
 
     def run_ddev_command(self, project, command):
-        project_path = PROJECTS_DIR / project
-        try:
-            result = subprocess.run([DDEV_COMMAND] + command, cwd=project_path, capture_output=True, text=True)
-            if result.returncode != 0:
-                messagebox.showerror("Error", result.stderr)
+        def worker():
+            project_path = PROJECTS_DIR / project
+            try:
+                result = subprocess.run(
+                    [DDEV_COMMAND] + command,
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode != 0:
+                    self.show_error("Error", result.stderr)
+            except Exception as e:
+                self.show_error("Exception", str(e))
 
-        except Exception as e:
-            messagebox.showerror("Exception", str(e))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def show_error(self, title, message):
+        self.root.after(0, lambda: messagebox.showerror(title, message))
 
     def refresh_projects(self):
+        current_selection = self.project_listbox.curselection()
+        selected_project_name = None
+        if current_selection:
+            label = self.project_listbox.get(current_selection[0])
+            selected_project_name = label.split(' ', 1)[1]
+
         self.project_listbox.delete(0, tk.END)
-    
+
         ddev_entries = self.get_ddev_raw_entries()
-    
-        # Map from resolved path to status
+
         status_by_path = {
             str(Path(entry["approot"]).resolve()): entry["status"]
             for entry in ddev_entries
         }
-    
-        for d in PROJECTS_DIR.iterdir():
+
+        new_index_to_select = None
+
+        for i, d in enumerate(PROJECTS_DIR.iterdir()):
             if not (d / ".ddev").exists():
                 continue
-    
+
             resolved_path = str(d.resolve())
             status = status_by_path.get(resolved_path, "unknown")
-    
-            if status == "running":
-                symbol = "[Running]"
-            elif status == "paused":
-                symbol = "[Paused]"
-            elif status == "stopped":
-                symbol = "[Stopped]"
-            else:
-                symbol = "[o]"
-
-            label = f"{symbol} {d.name}"
+            label = f"[{status}] {d.name}"
             self.project_listbox.insert(tk.END, label)
 
+            if d.name == selected_project_name:
+                new_index_to_select = i
+
+        if new_index_to_select is not None:
+            self.project_listbox.select_set(new_index_to_select)
+            self.project_listbox.event_generate("<<ListboxSelect>>")
+
+    def open_project_folder(self):
+        if self.selected_project:
+            project_path = PROJECTS_DIR / self.selected_project
+            self.open_directory(str(project_path))
+    
+    @staticmethod
+    def open_directory(path):
+        if platform.system() == "Windows":
+            os.startfile(path)
+        elif platform.system() == "Darwin":  # macOS
+            subprocess.run(["open", path])
+        else:  # Assume Linux/Unix
+            subprocess.run(["xdg-open", path])
 
     def get_ddev_raw_entries(self):
         try:
