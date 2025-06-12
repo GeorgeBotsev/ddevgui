@@ -8,6 +8,7 @@ import platform
 import yaml
 import base64
 import json
+import shutil
 
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".ddevgui.json")
 DEFAULTS = {
@@ -72,6 +73,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             ("Open Browser", self.open_browser),
             ("Open Adminer", self.open_adminer),
             ("Open Folder", self.open_project_folder),
+            ("Open Terminal (ddev ssh)", self.open_terminal_ssh),
             ("Open Mailpit", self.open_mailpit),
             ("Delete", self.delete_project),
             ("Import DB", self.import_db),
@@ -201,6 +203,35 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
     def open_mailpit(self):
         if self.selected_project:
             self.run_ddev_command(self.selected_project, ["mailpit"])
+    
+    def open_terminal_ssh(self):
+        if not self.selected_project:
+            messagebox.showerror("Error", "No project selected.")
+            return
+
+        project_path = PROJECTS_DIR / self.selected_project
+
+        if platform.system() == "Windows":
+            command = f'start cmd.exe /K "cd /d {project_path} && {DDEV_COMMAND} ssh"'
+            os.system(command)
+
+        elif platform.system() == "Darwin":
+            script = f'''
+            tell application "Terminal"
+                do script "cd {project_path} && {DDEV_COMMAND} ssh"
+                activate
+            end tell
+            '''
+            subprocess.run(["osascript", "-e", script])
+
+        else:
+            terminals = ["gnome-terminal", "konsole", "x-terminal-emulator", "xterm", "xfce4-terminal"]
+            for term in terminals:
+                if shutil.which(term):
+                    subprocess.Popen([term, "-e", f'bash -c "cd \\"{project_path}\\" && {DDEV_COMMAND} ssh; exec bash"'])
+                    return
+            messagebox.showerror("Error", "No supported terminal emulator found.")
+
 
     def delete_project(self):
         if self.selected_project:
