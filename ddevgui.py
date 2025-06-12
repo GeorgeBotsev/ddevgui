@@ -212,13 +212,13 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         project_path = PROJECTS_DIR / self.selected_project
 
         if platform.system() == "Windows":
-            command = f'start cmd.exe /K "cd /d {project_path} && {DDEV_COMMAND} ssh"'
+            command = f'start cmd.exe /K "cd /d {project_path} && ddev ssh"'
             os.system(command)
 
         elif platform.system() == "Darwin":
             script = f'''
             tell application "Terminal"
-                do script "cd {project_path} && {DDEV_COMMAND} ssh"
+                do script "cd {project_path} && ddev ssh"
                 activate
             end tell
             '''
@@ -228,7 +228,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             terminals = ["gnome-terminal", "konsole", "x-terminal-emulator", "xterm", "xfce4-terminal"]
             for term in terminals:
                 if shutil.which(term):
-                    subprocess.Popen([term, "-e", f'bash -c "cd \\"{project_path}\\" && {DDEV_COMMAND} ssh; exec bash"'])
+                    subprocess.Popen([term, "-e", f'bash -c "cd \\"{project_path}\\" && ddev ssh; exec bash"'])
                     return
             messagebox.showerror("Error", "No supported terminal emulator found.")
 
