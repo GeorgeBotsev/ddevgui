@@ -9,6 +9,7 @@ import yaml
 import base64
 import json
 import shutil
+import tempfile
 
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".ddevgui.json")
 DEFAULTS = {
@@ -63,6 +64,9 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         self.new_wp_project_button = tk.Button(self.sidebar, text="New WordPress Project", command=self.create_wordpress_project)
         self.new_wp_project_button.pack(fill=tk.X)
 
+        self.new_wp_project_button = tk.Button(self.sidebar, text="Install WordPress Core", command=self.install_wordpress_core)
+        self.new_wp_project_button.pack(fill=tk.X)
+
         self.controls = tk.Frame(self.main_frame)
         self.controls.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
@@ -82,7 +86,8 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             ("Enable Xdebug (Profile)", lambda: self.enable_xdebug("profile")),
             ("Add Vhost", self.add_vhost),
             ("Enable Redis", lambda: self.enable_service("redis")),
-            ("Enable Memcached", lambda: self.enable_service("memcached"))
+            ("Enable Memcached", lambda: self.enable_service("memcached")),
+            ("Reset WP Admin Users", self.reset_admin_users)
         ]
 
         for text, command in buttons:
@@ -204,6 +209,119 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         if self.selected_project:
             self.run_ddev_command(self.selected_project, ["mailpit"])
     
+    def reset_admin_users(self):
+        if not self.selected_project:
+            messagebox.showerror("Error", "No project selected.")
+            return
+
+        try:
+            project_path = PROJECTS_DIR / self.selected_project
+            config_path = project_path / ".ddev" / "config.yaml" 
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+                docroot = config.get("docroot", "public")
+
+                wp_config = Path(config_path).parent.parent / docroot / "wp-config.php"
+
+                prefix = "wp_"
+                if wp_config.exists():
+                    for line in wp_config.read_text().splitlines():
+                        if "$table_prefix" in line and "=" in line:
+                            try:
+                                prefix = line.split("=")[1].strip().strip("'; ")
+                                break
+                            except Exception:
+                                pass
+
+                get_admins_sql = (
+                    f"SELECT user_id FROM {prefix}usermeta "
+                    f"WHERE meta_key = '{prefix}capabilities' AND meta_value LIKE '%administrator%';"
+                )
+
+            result = subprocess.run(
+                [DDEV_COMMAND, "exec", "bash", "-c",
+                 f'wp --path={docroot} db query "{get_admins_sql}" --skip-column-names'],
+                cwd=project_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+
+            user_ids = [line.strip() for line in result.stdout.splitlines() if line.strip().isdigit()]
+
+            if not user_ids:
+                messagebox.showinfo("Info", "No administrator users found.")
+                return
+
+            for idx, uid in enumerate(user_ids):
+                login = "admin" if idx == 0 else f"admin{idx}"
+                self.update_admin_user_sql(uid, login)
+
+            messagebox.showinfo("Success", f"Updated {len(user_ids)} admin users.")
+
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+
+    def update_admin_user_sql(self, uid, login):
+        if not self.selected_project:
+            messagebox.showerror("Error", "No project selected.")
+            return
+
+        try:
+            project_path = PROJECTS_DIR / self.selected_project
+            config_path = project_path / ".ddev" / "config.yaml"
+
+            if not config_path.exists():
+                raise FileNotFoundError(f"{config_path} not found")
+
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+
+            docroot = config.get("docroot", "public")
+            
+            wp_config = Path(config_path).parent.parent / docroot / "wp-config.php"
+
+            prefix = "wp_"
+            if wp_config.exists():
+                for line in wp_config.read_text().splitlines():
+                    if "$table_prefix" in line and "=" in line:
+                        try:
+                            prefix = line.split("=")[1].strip().strip("'; ")
+                            break
+                        except Exception:
+                            pass
+
+            password_hash = "$P$Bk60b9sSLvYMTmfLn0njbnRavY8.6U0"
+
+            with tempfile.NamedTemporaryFile(
+                mode='w', delete=False, suffix=".sql", dir=project_path
+            ) as sql_file:
+                sql_file.write(
+                    f"UPDATE {prefix}users SET user_login = '{login}', "
+                    f"user_pass = '{password_hash}' WHERE ID = {uid};"
+                )
+                sql_filename = sql_file.name
+
+            filename_in_container = f"/var/www/html/{Path(sql_filename).name}"
+    
+            bash_command = f"wp --path={docroot} db query < {filename_in_container}"
+
+            subprocess.run(
+                [DDEV_COMMAND, "exec", "bash", "-c", bash_command],
+                cwd=project_path,
+                check=True
+            )
+
+            Path(sql_filename).unlink()
+    
+            print(f"Updated user ID {uid} to {login}")
+
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Error", f"Command failed:\n{e.stderr}")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
     def open_terminal_ssh(self):
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
@@ -231,7 +349,6 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                     subprocess.Popen([term, "-e", f'bash -c "cd \\"{project_path}\\" && ddev ssh; exec bash"'])
                     return
             messagebox.showerror("Error", "No supported terminal emulator found.")
-
 
     def delete_project(self):
         if self.selected_project:
@@ -356,7 +473,6 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             return None  # User closed the window or didn't submit
     
         return result["php"], result["db"], result["web"]
-
 
     def create_new_project(self):
         name = simpledialog.askstring("New Project", "Enter project name:")
@@ -556,7 +672,48 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             messagebox.showerror("Error", f"Failed to modify .htaccess: {e}")
 
         self.refresh_projects()
-            
+
+    def install_wordpress_core(self):
+        if not self.selected_project:
+            messagebox.showerror("Error", "No project selected.")
+            return
+
+        try:
+            project_path = PROJECTS_DIR / self.selected_project
+            config_path = project_path / ".ddev" / "config.yaml"
+        
+            if not config_path.exists():
+                raise FileNotFoundError(f"{config_path} not found")
+
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+
+            docroot = config.get("docroot", "web")
+            wp_path = project_path / docroot
+
+            subprocess.run(
+                [DDEV_COMMAND, "exec", "bash", "-c",
+                 f"wp --path={docroot} core download"],
+                cwd=project_path, check=True
+            )
+
+            subprocess.run(
+                [DDEV_COMMAND, "exec", "bash", "-c",
+                 f"wp --path={docroot} core config --dbhost=db --dbname=db --dbuser=db --dbpass=db"],
+                cwd=project_path, check=True
+            )
+
+            subprocess.run(
+                [DDEV_COMMAND, "exec", "bash", "-c",
+                 f"wp --path={docroot} core install --url=https://{self.selected_project}.ddev.site "
+                 "--title='Installed WordPress' --admin_user=admin --admin_password=admin --admin_email=admin@admin.com"],
+                cwd=project_path, check=True
+            )
+
+            messagebox.showinfo("Success", "WordPress installed successfully.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to install WordPress: {e}")
+
     def add_vhost(self):
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
