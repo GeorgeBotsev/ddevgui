@@ -228,7 +228,23 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                     for line in wp_config.read_text().splitlines():
                         if "$table_prefix" in line and "=" in line:
                             try:
-                                prefix = line.split("=")[1].strip().strip("'; ")
+                                parts = line.split("=", 1)
+                                if len(parts) < 2:
+                                    continue
+
+                                value = parts[1].strip()
+
+                                for marker in ("//", "#", "/*"):
+                                    if marker in value:
+                                        value = value.split(marker, 1)[0].strip()
+
+                                if value.endswith(";"):
+                                    value = value[:-1].strip()
+
+                                if value and value[0] == value[-1] and value[0] in ("'", '"'):
+                                    value = value[1:-1]
+                                
+                                prefix = value
                                 break
                             except Exception:
                                 pass
@@ -284,13 +300,29 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
             prefix = "wp_"
             if wp_config.exists():
-                for line in wp_config.read_text().splitlines():
-                    if "$table_prefix" in line and "=" in line:
-                        try:
-                            prefix = line.split("=")[1].strip().strip("'; ")
-                            break
-                        except Exception:
-                            pass
+                    for line in wp_config.read_text().splitlines():
+                        if "$table_prefix" in line and "=" in line:
+                            try:
+                                parts = line.split("=", 1)
+                                if len(parts) < 2:
+                                    continue
+
+                                value = parts[1].strip()
+
+                                for marker in ("//", "#", "/*"):
+                                    if marker in value:
+                                        value = value.split(marker, 1)[0].strip()
+
+                                if value.endswith(";"):
+                                    value = value[:-1].strip()
+
+                                if value and value[0] == value[-1] and value[0] in ("'", '"'):
+                                    value = value[1:-1]
+                                
+                                prefix = value
+                                break
+                            except Exception:
+                                pass
 
             password_hash = "$P$Bk60b9sSLvYMTmfLn0njbnRavY8.6U0"
 
