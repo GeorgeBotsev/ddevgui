@@ -386,8 +386,13 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         if self.selected_project:
             confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete {self.selected_project}?")
             if confirm:
-                self.run_ddev_command(self.selected_project, ["delete", "-Oy"])
                 project_path = PROJECTS_DIR / self.selected_project
+                subprocess.run(
+                    ["ddev", "delete", "-Oy"],
+                    cwd=project_path,
+                    capture_output=True,
+                    text=True
+                )
                 try:
                     if project_path.exists():
                         for root, dirs, files in os.walk(project_path, topdown=False):
