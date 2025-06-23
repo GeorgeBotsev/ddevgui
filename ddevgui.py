@@ -10,6 +10,7 @@ import base64
 import json
 import shutil
 import tempfile
+import re
 
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".ddevgui.json")
 DEFAULTS = {
@@ -29,6 +30,36 @@ DB_VERSIONS = [
     "mysql:5.5", "mysql:5.6", "mysql:5.7", "mysql:8.0", "mysql:8.1", "mysql:8.2", "mysql:8.3", "mysql:8.4"
 ]
 WEBSERVERS = ["apache-fpm", "nginx-fpm", "generic"]
+
+def extract_table_prefix(wp_config_path, docroot, project_path):
+    try:
+        content = Path(wp_config_path).read_text()
+        match = re.search(r"""\$table_prefix\s*=\s*(['"])(.*?)\1""", content)
+        if match:
+            prefix = match.group(2)
+            return prefix
+    except Exception as e:
+        print(f"[ERROR] Reading wp-config.php: {e}")
+
+    try:
+        result = subprocess.run(
+            [
+                DDEV_COMMAND, "exec", "bash", "-c",
+                f"wp --path={docroot} db prefix"
+            ],
+            cwd=project_path,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        fallback_prefix = result.stdout.strip()
+        return fallback_prefix
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] wp db prefix failed: {e.stderr}")
+    except Exception as e:
+        print(f"[ERROR] Unexpected error running wp db prefix: {e}")
+
+    return "wp_"
 
 class DDEVManagerGUI:
     def __init__(self, root):
@@ -222,32 +253,8 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 docroot = config.get("docroot", "public")
 
                 wp_config = Path(config_path).parent.parent / docroot / "wp-config.php"
-
-                prefix = "wp_"
-                if wp_config.exists():
-                    for line in wp_config.read_text().splitlines():
-                        if "$table_prefix" in line and "=" in line:
-                            try:
-                                parts = line.split("=", 1)
-                                if len(parts) < 2:
-                                    continue
-
-                                value = parts[1].strip()
-
-                                for marker in ("//", "#", "/*"):
-                                    if marker in value:
-                                        value = value.split(marker, 1)[0].strip()
-
-                                if value.endswith(";"):
-                                    value = value[:-1].strip()
-
-                                if value and value[0] == value[-1] and value[0] in ("'", '"'):
-                                    value = value[1:-1]
-                                
-                                prefix = value
-                                break
-                            except Exception:
-                                pass
+                
+                prefix = extract_table_prefix(wp_config, docroot, project_path)
 
                 get_admins_sql = (
                     f"SELECT user_id FROM {prefix}usermeta "
@@ -298,31 +305,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             
             wp_config = Path(config_path).parent.parent / docroot / "wp-config.php"
 
-            prefix = "wp_"
-            if wp_config.exists():
-                    for line in wp_config.read_text().splitlines():
-                        if "$table_prefix" in line and "=" in line:
-                            try:
-                                parts = line.split("=", 1)
-                                if len(parts) < 2:
-                                    continue
-
-                                value = parts[1].strip()
-
-                                for marker in ("//", "#", "/*"):
-                                    if marker in value:
-                                        value = value.split(marker, 1)[0].strip()
-
-                                if value.endswith(";"):
-                                    value = value[:-1].strip()
-
-                                if value and value[0] == value[-1] and value[0] in ("'", '"'):
-                                    value = value[1:-1]
-                                
-                                prefix = value
-                                break
-                            except Exception:
-                                pass
+            prefix = extract_table_prefix(wp_config, docroot, project_path)
 
             password_hash = "$P$Bk60b9sSLvYMTmfLn0njbnRavY8.6U0"
 
