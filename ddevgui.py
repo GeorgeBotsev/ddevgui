@@ -229,7 +229,22 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             self.run_ddev_command(self.selected_project, ["restart"])
 
     def open_browser(self):
-        if self.selected_project:
+        if not self.selected_project:
+            return
+        try:
+            project_path = PROJECTS_DIR / self.selected_project
+            config_path = project_path / ".ddev" / "config.yaml" 
+            with open(config_path, "r") as f:
+                config = yaml.safe_load(f)
+                docroot = config.get("docroot", "public")
+        except Exception as e:
+            print(f"Error reading config.yaml: {e}")                
+
+        wp_admin_path = os.path.join(project_path , docroot, 'wp-admin')
+
+        if os.path.isdir(wp_admin_path):
+            self.run_ddev_command(self.selected_project, ["launch", "/wp-admin"])
+        else:
             self.run_ddev_command(self.selected_project, ["launch"])
 
     def open_adminer(self):
