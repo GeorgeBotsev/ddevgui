@@ -118,7 +118,8 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             ("Add Vhost", self.add_vhost),
             ("Enable Redis", lambda: self.enable_service("redis")),
             ("Enable Memcached", lambda: self.enable_service("memcached")),
-            ("Reset WP Admin Users", self.reset_admin_users)
+            ("Reset WP Admin Users", self.reset_admin_users),
+            ("Prepare dev environment", self.setup_environment),
         ]
 
         for text, command in buttons:
@@ -351,6 +352,57 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             messagebox.showerror("Error", f"Command failed:\n{e.stderr}")
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
+    def setup_environment(self):
+        if not self.selected_project:
+            messagebox.showerror("Error", "No project selected.")
+            return
+
+        project_path = PROJECTS_DIR / self.selected_project
+        config_path = project_path / ".ddev" / "config.yaml"
+        with open(config_path, "r") as f:
+             config = yaml.safe_load(f)
+             docroot = config.get("docroot", "public")
+        container_docroot = f"/var/www/html/{docroot}"
+
+        smtp_plugins = [
+            "wp-mail-smtp", "wp-mail-smtp-pro" , "post-smtp", "easy-wp-smtp", "smtp-mailer", "gmail-smtp",
+            "sendinblue", "mailgun", "pepipost-smtp", "mailjet", "smtp-settings"
+        ]
+        migration_plugin = "all-in-one-wp-migration"
+        setup_lines = []
+
+        for plugin in smtp_plugins:
+            setup_lines.append(f'''
+            cd {container_docroot} || exit 1
+            if wp plugin is-installed {plugin}; then
+                if wp plugin is-active {plugin}; then
+                    wp plugin deactivate {plugin};
+                fi
+                wp plugin delete {plugin};
+            fi
+            ''')
+
+        setup_lines.append(f'''
+        if ! wp plugin is-installed {migration_plugin}; then
+            wp plugin install {migration_plugin} --activate;
+        elif ! wp plugin is-active {migration_plugin}; then
+            wp plugin activate {migration_plugin};
+        fi
+        ''')
+
+        setup_script = "\n".join(setup_lines)
+
+        try:
+            subprocess.run(
+                ["ddev", "exec", "bash", "-c", setup_script],
+                cwd=project_path,
+                check=True
+            )
+            messagebox.showinfo("Setup Complete", f"Environment setup completed for {self.selected_project}.")
+
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Setup Failed", f"Error setting up environment: {e}")
 
     def open_terminal_ssh(self):
         if not self.selected_project:
