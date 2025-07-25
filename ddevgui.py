@@ -369,6 +369,11 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             "wp-mail-smtp", "wp-mail-smtp-pro" , "post-smtp", "easy-wp-smtp", "smtp-mailer", "gmail-smtp",
             "sendinblue", "mailgun", "pepipost-smtp", "mailjet", "smtp-settings"
         ]
+
+        other_plugins = [
+            "akismet", "hello-dolly", "hello"
+        ]
+
         migration_plugin = "all-in-one-wp-migration"
         setup_lines = []
 
@@ -383,12 +388,18 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             fi
             ''')
 
+        for plugin in other_plugins:
+            setup_lines.append(f'''
+            wp plugin delete {plugin};
+            ''')
+
         setup_lines.append(f'''
         if ! wp plugin is-installed {migration_plugin}; then
             wp plugin install {migration_plugin} --activate;
         elif ! wp plugin is-active {migration_plugin}; then
             wp plugin activate {migration_plugin};
         fi
+        wp rewrite flush --hard;
         ''')
 
         setup_script = "\n".join(setup_lines)
@@ -457,9 +468,19 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
     def import_db(self):
         if self.selected_project:
-            db_file = filedialog.askopenfilename(title="Select SQL file to import")
+            db_file = filedialog.askopenfilename(
+                title="Select a SQL Dump File",
+                filetypes=[
+                    ("SQL files", "*.sql"),
+                    ("GZipped SQL files", "*.sql.gz"),
+                    ("Gzipped SQL (alt)", "*.sql.gzip"),
+                    ("ZIP archives", "*.zip"),
+                    ("All supported", ("*.sql", "*.sql.gz", "*.sql.gzip", "*.zip")),
+                    ("All files", "*.*")
+                ]
+            )
             if db_file:
-                self.run_ddev_command(self.selected_project, ["import-db", "--src", db_file])
+                self.run_ddev_command(self.selected_project, ["import-db", "--file", db_file])
 
     def export_db(self):
         if self.selected_project:
@@ -567,7 +588,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             php_version, db_version, webserver_type = self.ask_project_settings()
             path = PROJECTS_DIR / name
             path.mkdir(parents=True, exist_ok=True)
-            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--docroot", "public", "--create-docroot",
+            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--docroot", "public",
                             "--project-type", "php", "--php-version", php_version, "--database", db_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
@@ -583,10 +604,12 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         project_path = path
         php_config_dir = project_path / ".ddev" / "php"
         php_ini_file = php_config_dir / "php.ini"
+        profiler_dir = project_path / "profiler"
+        profiler_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             php_config_dir.mkdir(parents=True, exist_ok=True)
-            output_dir = "/var/www/html/.ddev/"
+            output_dir = "/var/www/html/profiler/"
             php_ini_content = (
                 "[PHP]\n"
                 "upload_max_filesize = 4084M\n"
@@ -650,7 +673,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             php_version, db_version, webserver_type = self.ask_project_settings()
             path = PROJECTS_DIR / name
             path.mkdir(parents=True, exist_ok=True)
-            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--project-type", "wordpress", "--docroot", "web", "--create-docroot",
+            subprocess.run([DDEV_COMMAND, "config", "--project-name", name, "--project-type", "wordpress", "--docroot", "web",
                             "--php-version", php_version, "--database", db_version, "--webserver-type", webserver_type], cwd=path)
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
@@ -665,10 +688,12 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                     project_path = path
         php_config_dir = project_path / ".ddev" / "php"
         php_ini_file = php_config_dir / "php.ini"
+        profiler_dir = project_path / "profiler"
+        profiler_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             php_config_dir.mkdir(parents=True, exist_ok=True)
-            output_dir = "/var/www/html/.ddev/"
+            output_dir = "/var/www/html/profiler/"
             php_ini_content = (
                 "[PHP]\n"
                 "upload_max_filesize = 4084M\n"
