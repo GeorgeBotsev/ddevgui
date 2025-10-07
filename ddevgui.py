@@ -184,7 +184,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         if self.selected_project:
             project_path = PROJECTS_DIR / self.selected_project
             self.open_directory(str(project_path))
-    
+
     @staticmethod
     def open_directory(path):
         if platform.system() == "Windows":
@@ -229,24 +229,76 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         if self.selected_project:
             self.run_ddev_command(self.selected_project, ["restart"])
 
+    WP_CORE_PHP = {
+        "index.php", "wp-activate.php", "wp-blog-header.php", "wp-comments-post.php",
+        "wp-config.php", "wp-cron.php", "wp-links-opml.php", "wp-load.php",
+        "wp-login.php", "wp-mail.php", "wp-settings.php", "xmlrpc.php"
+    }
+
+    def _read_docroot(self,project_path: Path, default="public") -> str:
+        cfg = project_path / ".ddev" / "config.yaml"
+        if not cfg.is_file():
+            return default
+        try:
+            with cfg.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+                return str(data.get("docroot", default)).strip() or default
+        except Exception as e:
+            print(f"Error reading config.yaml: {e}")
+            return default
+
+    def _wp_is_installed(self,project_path: Path) -> bool:
+        try:
+            force = subprocess.run(
+                ["ddev", "config", "--project-type=wordpress"],
+                cwd=project_path,
+                check=True,
+            )
+            res = subprocess.run(
+                ["ddev", "wp", "core", "is-installed"],
+                cwd=project_path,
+                check=True,
+            )
+            return res.returncode == 0
+        except Exception as e:
+            print(f"WP install check failed: {e}")
+            return False
+
     def open_browser(self):
         if not self.selected_project:
             return
+
+        project_path = PROJECTS_DIR / self.selected_project
+        docroot = self._read_docroot(project_path)
+        root = project_path / docroot
+
+        if not root.exists():
+            return self.run_ddev_command(self.selected_project, ["launch"])
+
+        if self._wp_is_installed(project_path):
+            wp_admin = root / "wp-admin"
+            if wp_admin.is_dir():
+                return self.run_ddev_command(self.selected_project, ["launch", "/wp-admin"])
+            return self.run_ddev_command(self.selected_project, ["launch"])
+
+        installer = root / "installer.php"
+        if installer.is_file():
+            return self.run_ddev_command(self.selected_project, ["launch", "/installer.php"])
+
         try:
-            project_path = PROJECTS_DIR / self.selected_project
-            config_path = project_path / ".ddev" / "config.yaml" 
-            with open(config_path, "r") as f:
-                config = yaml.safe_load(f)
-                docroot = config.get("docroot", "public")
+            candidates = sorted(p for p in root.glob("*.php") if p.name not in self.WP_CORE_PHP)
         except Exception as e:
-            print(f"Error reading config.yaml: {e}")                
+            print(f"Error scanning docroot: {e}")
+            candidates = []
 
-        wp_admin_path = os.path.join(project_path , docroot, 'wp-admin')
+        if candidates:
+            rel = "/" + candidates[0].name
+            return self.run_ddev_command(self.selected_project, ["launch", rel])
 
-        if os.path.isdir(wp_admin_path):
-            self.run_ddev_command(self.selected_project, ["launch", "/wp-admin"])
-        else:
-            self.run_ddev_command(self.selected_project, ["launch"])
+        if (root / "wp-admin").is_dir():
+            return self.run_ddev_command(self.selected_project, ["launch", "/wp-admin"])
+
+        return self.run_ddev_command(self.selected_project, ["launch"])
 
     def open_adminer(self):
         if self.selected_project:
@@ -255,7 +307,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
     def open_mailpit(self):
         if self.selected_project:
             self.run_ddev_command(self.selected_project, ["mailpit"])
-    
+
     def reset_admin_users(self):
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
@@ -263,13 +315,13 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
         try:
             project_path = PROJECTS_DIR / self.selected_project
-            config_path = project_path / ".ddev" / "config.yaml" 
+            config_path = project_path / ".ddev" / "config.yaml"
             with open(config_path, "r") as f:
                 config = yaml.safe_load(f)
                 docroot = config.get("docroot", "public")
 
                 wp_config = Path(config_path).parent.parent / docroot / "wp-config.php"
-                
+
                 prefix = extract_table_prefix(wp_config, docroot, project_path)
 
                 get_admins_sql = (
@@ -318,7 +370,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 config = yaml.safe_load(f)
 
             docroot = config.get("docroot", "public")
-            
+
             wp_config = Path(config_path).parent.parent / docroot / "wp-config.php"
 
             prefix = extract_table_prefix(wp_config, docroot, project_path)
@@ -335,7 +387,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 sql_filename = sql_file.name
 
             filename_in_container = f"/var/www/html/{Path(sql_filename).name}"
-    
+
             bash_command = f"wp --path={docroot} db query < {filename_in_container}"
 
             subprocess.run(
@@ -345,7 +397,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             )
 
             Path(sql_filename).unlink()
-    
+
             print(f"Updated user ID {uid} to {login}")
 
         except subprocess.CalledProcessError as e:
@@ -489,7 +541,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 self.run_ddev_command(self.selected_project, ["export-db", "--file", export_path])
 
     def enable_xdebug(self, mode):
-        
+
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
             return
@@ -576,10 +628,10 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         submit_btn.pack(pady=10)
 
         self.root.wait_window(settings_win)
-    
+
         if None in result.values():
             return None  # User closed the window or didn't submit
-    
+
         return result["php"], result["db"], result["web"]
 
     def create_new_project(self):
@@ -624,7 +676,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
             with open(php_ini_file, "w") as f:
                 f.write(php_ini_content)
-        
+
             subprocess.run([DDEV_COMMAND, "start"], cwd=path)
             self.refresh_projects()
         except Exception as e:
@@ -653,6 +705,17 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             "RewriteCond %{REQUEST_FILENAME} !-f\n"
             "RewriteRule \\.(jpe?g|png|gif|webp|bmp|svg|ico)$ /placeholder.png [L]\n"
             "</IfModule>\n\n"
+            "# BEGIN WordPress\n\n"
+            "<IfModule mod_rewrite.c>\n"
+            "RewriteEngine On\n"
+            "RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]\n"
+            "RewriteBase /\n"
+            "RewriteRule ^index\.php$ - [L]\n"
+            "RewriteCond %{REQUEST_FILENAME} !-f\n"
+            "RewriteCond %{REQUEST_FILENAME} !-d\n"
+            "RewriteRule . /index.php [L]\n"
+            "</IfModule>\n\n"
+            "# END WordPress\n"
         )
 
         try:
@@ -661,7 +724,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                     original_contents = f.read()
             else:
                 original_contents = ""
-        
+
             with open(htaccess_path, "w") as f:
                 f.write(custom_rules + original_contents)
         except Exception as e:
@@ -678,7 +741,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             config_file = path / ".ddev" / "config.yaml"
             subprocess.run([
                     DDEV_COMMAND, "add-on", "get", "ddev/ddev-adminer"
-            ], cwd=path)            
+            ], cwd=path)
             if config_file.exists():
                 with open(config_file, "r") as f:
                     config = yaml.safe_load(f)
@@ -708,7 +771,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
             with open(php_ini_file, "w") as f:
                 f.write(php_ini_content)
-            
+
             subprocess.run([DDEV_COMMAND, "start"], cwd=path)
             subprocess.run([DDEV_COMMAND, "wp", "--path=web", "core", "download"], cwd=path)
             subprocess.run([DDEV_COMMAND, "wp", "--path=web", "core", "install", "--url=http://{}.ddev.site".format(name),
@@ -717,12 +780,12 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed: {e}")
-        
+
 
         try:
             with open(wp_config, "r") as f:
                 lines = f.readlines()
-            
+
                 insert_index = next((i for i, line in enumerate(lines) if "/* That's all, stop editing!" in line), len(lines))
 
                 debug_config = [
@@ -737,16 +800,16 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
                 existing_content = ''.join(lines)
                 to_insert = ["\n"] + [line for line in debug_config if line not in existing_content]
-            
+
                 if len(to_insert) > 1:  # If anything is new (more than just the "\n")
                     lines[insert_index:insert_index] = to_insert
                     with open(wp_config, "w") as f:
                         f.writelines(lines)
-            
+
                 messagebox.showinfo("Success", "WordPress project created and configured.")
         except Exception as e:
                 messagebox.showerror("Error", f"Failed to modify wp-config.php: {e}")
-        
+
         import base64
 
         transparent_png_base64 = (
@@ -769,6 +832,17 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             "RewriteCond %{REQUEST_FILENAME} !-f\n"
             "RewriteRule \\.(jpe?g|png|gif|webp|bmp|svg|ico)$ /placeholder.png [L]\n"
             "</IfModule>\n\n"
+            "# BEGIN WordPress\n\n"
+            "<IfModule mod_rewrite.c>\n"
+            "RewriteEngine On\n"
+            "RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]\n"
+            "RewriteBase /\n"
+            "RewriteRule ^index\.php$ - [L]\n"
+            "RewriteCond %{REQUEST_FILENAME} !-f\n"
+            "RewriteCond %{REQUEST_FILENAME} !-d\n"
+            "RewriteRule . /index.php [L]\n"
+            "</IfModule>\n\n"
+            "# END WordPress\n"
         )
 
         try:
@@ -777,7 +851,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                     original_contents = f.read()
             else:
                 original_contents = ""
-        
+
             with open(htaccess_path, "w") as f:
                 f.write(custom_rules + original_contents)
         except Exception as e:
@@ -793,7 +867,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         try:
             project_path = PROJECTS_DIR / self.selected_project
             config_path = project_path / ".ddev" / "config.yaml"
-        
+
             if not config_path.exists():
                 raise FileNotFoundError(f"{config_path} not found")
 
@@ -838,14 +912,14 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         project_path = PROJECTS_DIR / self.selected_project
 
         try:
-        
+
             subprocess.run([DDEV_COMMAND, "config", "--auto", "--additional-hostnames", hostname], cwd=project_path, check=True)
             subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path)
             messagebox.showinfo("Success", f"Hostname {hostname} added")
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to add vhost: {e}")
-        
+
     def enable_service(self, service):
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
