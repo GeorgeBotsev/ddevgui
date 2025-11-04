@@ -901,24 +901,147 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             messagebox.showerror("Error", f"Failed to install WordPress: {e}")
 
     def add_vhost(self):
+        import json, re, subprocess, tkinter as tk
+        from tkinter import messagebox, ttk
+
         if not self.selected_project:
             messagebox.showerror("Error", "No project selected.")
             return
 
-        hostname = simpledialog.askstring("Add Vhost", "Enter hostname (example: sub.mysite.ddev.site):")
-        if not hostname:
-            return
+        DDEV_DOMAIN_SUFFIX = ".ddev.site"
+        VALID = re.compile(r"^[a-z0-9][a-z0-9\-\.]*[a-z0-9]$", re.IGNORECASE)
+
+        def normalize_one(h):
+            h = (h or "").strip().lower()
+            if not h:
+                return None
+            if h.endswith(DDEV_DOMAIN_SUFFIX):
+                h = h[: -len(DDEV_DOMAIN_SUFFIX)]
+            if "/" in h or " " in h:
+                return None
+            if h.startswith("."):
+                h = h[1:]
+            if h.endswith("."):
+                h = h[:-1]
+            return h if h and VALID.match(h) else None
+
+        def normalize_many(items):
+            out, seen, errs = [], set(), []
+            for it in items:
+                v = normalize_one(it)
+                if v is None:
+                    errs.append(f"Invalid: {it!r}")
+                elif v not in seen:
+                    out.append(v); seen.add(v)
+            return out, errs
+
+        def split_multi(s):
+            return [p.strip() for p in s.replace(",", "\n").splitlines() if p.strip()]
 
         project_path = PROJECTS_DIR / self.selected_project
 
+        # Read current hostnames from `ddev describe -j`
         try:
+            out = subprocess.check_output([DDEV_COMMAND, "describe", "-j"], cwd=project_path, text=True)
+            j = json.loads(out)
+            r = j.get("raw") or {}
 
-            subprocess.run([DDEV_COMMAND, "config", "--auto", "--additional-hostnames", hostname], cwd=project_path, check=True)
-            subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path)
-            messagebox.showinfo("Success", f"Hostname {hostname} added")
+            # FQDNs from ddev. First is primary; also available as r["hostname"].
+            fqdn_list = r.get("hostnames") or []
+            if not fqdn_list and r.get("hostname"):
+                fqdn_list = [r["hostname"]]
+            if not fqdn_list:
+                raise RuntimeError("No hostnames found in ddev JSON.")
+
+            # Normalize to base names (strip .ddev.site etc.)
+            primary = normalize_one(r.get("hostname") or fqdn_list[0])
+            bases = [normalize_one(x) for x in fqdn_list if normalize_one(x)]
+
+            # Additional only (exclude primary). Use `current` downstream for the listbox.
+            current, _errs = normalize_many([b for b in bases if b != primary])
 
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to add vhost: {e}")
+            messagebox.showerror("Error", f"Failed to read hostnames via `ddev describe -j`: {e}")
+            return
+
+        # Modal dialog
+        parent = getattr(self, "root", None) or tk._get_default_root()
+        dlg = tk.Toplevel(parent)
+        dlg.title("Edit ddev vhosts")
+        dlg.transient(parent)
+        dlg.grab_set()
+
+        ttk.Label(dlg, text="Configured vhosts (without .ddev.site):").grid(row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(8,4))
+
+        lb = tk.Listbox(dlg, selectmode=tk.EXTENDED, height=12)
+        lb.grid(row=1, column=0, columnspan=3, sticky="nsew", padx=8)
+        for h in sorted(set(current)):
+            lb.insert(tk.END, h)
+
+        ttk.Label(dlg, text="Add hostnames (comma or newline separated):").grid(row=2, column=0, columnspan=2, sticky="w", padx=8, pady=(10,2))
+        add_text = tk.Text(dlg, height=3, width=40)
+        add_text.grid(row=3, column=0, columnspan=2, sticky="ew", padx=8)
+
+        def on_add():
+            raw = add_text.get("1.0", "end").strip()
+            if not raw:
+                return
+            cleaned, errs = normalize_many(split_multi(raw))
+            if errs:
+                messagebox.showerror("Invalid entries", "\n".join(errs), parent=dlg); return
+            existing = {lb.get(i) for i in range(lb.size())}
+            for h in cleaned:
+                if h not in existing:
+                    lb.insert(tk.END, h)
+            add_text.delete("1.0", "end")
+
+        def on_remove():
+            sel = list(lb.curselection())
+            for idx in reversed(sel):
+                lb.delete(idx)
+
+        ttk.Button(dlg, text="Add", command=on_add).grid(row=3, column=2, sticky="e", padx=(0,8))
+        ttk.Button(dlg, text="Remove selected", command=on_remove).grid(row=4, column=2, sticky="e", padx=(0,8), pady=(8,0))
+
+        btns = ttk.Frame(dlg); btns.grid(row=5, column=0, columnspan=3, sticky="e", padx=8, pady=8)
+        result = {"ok": False}
+        def on_ok():
+            items = [lb.get(i) for i in range(lb.size())]
+            cleaned, errs = normalize_many(items)
+            if errs:
+                messagebox.showerror("Invalid entries", "\n".join(errs), parent=dlg); return
+            result["list"] = cleaned; result["ok"] = True
+            dlg.destroy()
+        def on_cancel():
+            dlg.destroy()
+        ttk.Button(btns, text="Cancel", command=on_cancel).pack(side="right", padx=(0,6))
+        ttk.Button(btns, text="OK", command=on_ok).pack(side="right")
+
+        dlg.columnconfigure(0, weight=1); dlg.columnconfigure(1, weight=1)
+        dlg.rowconfigure(1, weight=1)
+        dlg.wait_window()
+
+        if not result.get("ok"):
+            return
+
+        new_hosts = result.get("list", [])
+        if sorted(new_hosts) == sorted(current):
+            messagebox.showinfo("No changes", "No updates to additional_hostnames.")
+            return
+
+        try:
+            args = [
+                DDEV_COMMAND, "config", "--auto",
+                "--additional-hostnames", ",".join(new_hosts) if new_hosts else "",
+            ]
+            subprocess.run(args, cwd=project_path, check=True)
+            subprocess.run([DDEV_COMMAND, "restart"], cwd=project_path, check=True)
+            shown = "\n".join(f"- {h}{DDEV_DOMAIN_SUFFIX}" for h in new_hosts)
+            messagebox.showinfo("Success", f"Updated additional_hostnames:\n{shown}")
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Error", f"ddev failed: {e}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to update vhosts: {e}")
 
     def enable_service(self, service):
         if not self.selected_project:
