@@ -147,38 +147,74 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
         self.root.after(0, lambda: messagebox.showerror(title, message))
 
     def refresh_projects(self):
+        # Remember current selection (by project name)
         current_selection = self.project_listbox.curselection()
         selected_project_name = None
         if current_selection:
             label = self.project_listbox.get(current_selection[0])
+            # label is like: "[running] nest"
             selected_project_name = label.split(' ', 1)[1]
 
+        # Clear listbox
         self.project_listbox.delete(0, tk.END)
 
+        # Get ddev data
         ddev_entries = self.get_ddev_raw_entries()
 
+        # Map absolute approot → status
         status_by_path = {
             str(Path(entry["approot"]).resolve()): entry["status"]
             for entry in ddev_entries
         }
 
-        new_index_to_select = None
+        # Custom order: running → paused → stopped → unknown/other
+        status_priority = {
+            "running": 0,
+            "paused": 1,
+            "stopped": 2,
+            "unknown": 3,
+        }
 
-        for i, d in enumerate(PROJECTS_DIR.iterdir()):
+        # Collect all projects first
+        projects = []
+        for d in PROJECTS_DIR.iterdir():
             if not (d / ".ddev").exists():
                 continue
 
             resolved_path = str(d.resolve())
-            status = status_by_path.get(resolved_path, "unknown")
-            label = f"[{status}] {d.name}"
+            raw_status = status_by_path.get(resolved_path, "unknown")
+            status = (raw_status or "unknown").lower()
+
+            projects.append({
+                "name": d.name,
+                "status": status,
+                "resolved_path": resolved_path,
+            })
+
+        # Sort projects by status, then by name
+        projects.sort(
+            key=lambda p: (
+                status_priority.get(p["status"], 99),
+                p["name"].lower()
+            )
+        )
+
+        # Rebuild listbox in sorted order
+        new_index_to_select = None
+
+        for idx, proj in enumerate(projects):
+            # If you prefer capitalised labels, use proj["status"].capitalize()
+            label = f"[{proj['status']}] {proj['name']}"
             self.project_listbox.insert(tk.END, label)
 
-            if d.name == selected_project_name:
-                new_index_to_select = i
+            if proj["name"] == selected_project_name:
+                new_index_to_select = idx
 
+           # Restore selection if possible
         if new_index_to_select is not None:
             self.project_listbox.select_set(new_index_to_select)
             self.project_listbox.event_generate("<<ListboxSelect>>")
+
 
     def open_project_folder(self):
         if self.selected_project:
@@ -196,7 +232,12 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
     def get_ddev_raw_entries(self):
         try:
-            result = subprocess.run(["ddev", "list", "-j"], capture_output=True, check=True, text=True)
+            result = subprocess.run(
+                ["ddev", "list", "-j"],
+                capture_output=True,
+                check=True,
+                text=True
+            )
             data = json.loads(result.stdout)
             return data.get("raw", [])
         except Exception as e:
