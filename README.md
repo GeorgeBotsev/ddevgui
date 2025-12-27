@@ -2,6 +2,10 @@
 
 A cross-platform desktop GUI for managing [DDEV](https://ddev.readthedocs.io/) web development environments — built with Python and Tkinter.
 
+### How to use on Windows
+Make sure that you setup ddev in the normal WSL2 mode, and then re-run the setup again and select to have it setup "traditionally".
+This is necessary in order to have the ddev.exe in your program files folder and for this wrapper to work.
+
 ---
 
 ### 🧰 Project Management
