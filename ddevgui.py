@@ -235,6 +235,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             result = subprocess.run(
                 ["ddev", "list", "-j"],
                 capture_output=True,
+                encoding="utf-8",
                 check=True,
                 text=True
             )
@@ -1147,3 +1148,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = DDEVManagerGUI(root)
     root.mainloop()
+
