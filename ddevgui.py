@@ -14,7 +14,7 @@ import re
 
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".ddevgui.json")
 DEFAULTS = {
-    "php_version": "8.0",
+    "php_version": "8.3",
     "db_version": "mysql:8.0",
     "webserver": "apache-fpm"
 }
@@ -48,6 +48,7 @@ def extract_table_prefix(wp_config_path, docroot, project_path):
                 f"wp --path={docroot} db prefix"
             ],
             cwd=project_path,
+            encoding="utf-8",
             capture_output=True,
             text=True,
             check=True
@@ -133,6 +134,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 result = subprocess.run(
                     [DDEV_COMMAND] + command,
                     cwd=project_path,
+                    encoding="utf-8",
                     capture_output=True,
                     text=True
                 )
@@ -375,6 +377,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 [DDEV_COMMAND, "exec", "bash", "-c",
                  f'wp --path={docroot} db query "{get_admins_sql}" --skip-column-names'],
                 cwd=project_path,
+                encoding="utf-8",
                 capture_output=True,
                 text=True,
                 check=True
@@ -545,6 +548,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
                 subprocess.run(
                     ["ddev", "delete", "-Oy"],
                     cwd=project_path,
+                    encoding="utf-8",
                     capture_output=True,
                     text=True
                 )
@@ -1148,4 +1152,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = DDEVManagerGUI(root)
     root.mainloop()
-
