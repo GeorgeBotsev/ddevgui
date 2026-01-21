@@ -988,7 +988,16 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
 
         # Read current hostnames from `ddev describe -j`
         try:
-            out = subprocess.check_output([DDEV_COMMAND, "describe", "-j"], cwd=project_path, text=True)
+            p = subprocess.run(
+                [DDEV_COMMAND, "describe", "-j"],
+                cwd=str(project_path),
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                check=True,
+            )
+            out = (p.stdout or "") + "\n" + (p.stderr or "")
             j = json.loads(out)
             r = j.get("raw") or {}
 
@@ -1152,3 +1161,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = DDEVManagerGUI(root)
     root.mainloop()
+
