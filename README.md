@@ -5,6 +5,9 @@ A cross-platform desktop GUI for managing [DDEV](https://ddev.readthedocs.io/) w
 ### How to use on Windows
 Make sure that you setup ddev in the normal WSL2 mode, and then re-run the setup again and select to have it setup "traditionally".
 This is necessary in order to have the ddev.exe in your program files folder and for this wrapper to work.
+Make sure that you setup "Enable Win32 long paths" in the group policy in Computer Configuration > Administrative Templates > System > Filesystem
+Make sure that you setup Windows defender to bypass scanning for your project directory.
+Make sure that you placed your project directory at a very short path - e.g. C:\websites\
 
 ---
 
