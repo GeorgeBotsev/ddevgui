@@ -756,7 +756,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             "RewriteEngine On\n"
             "RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]\n"
             "RewriteBase /\n"
-            "RewriteRule ^index\.php$ - [L]\n"
+            "RewriteRule ^index\\.php$ - [L]\n"         
             "RewriteCond %{REQUEST_FILENAME} !-f\n"
             "RewriteCond %{REQUEST_FILENAME} !-d\n"
             "RewriteRule . /index.php [L]\n"
@@ -883,7 +883,7 @@ iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAxHpUWHRSYXcgcHJvZmlsZSB0eXBlIGV4
             "RewriteEngine On\n"
             "RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]\n"
             "RewriteBase /\n"
-            "RewriteRule ^index\.php$ - [L]\n"
+            "RewriteRule ^index\\.php$ - [L]\n"
             "RewriteCond %{REQUEST_FILENAME} !-f\n"
             "RewriteCond %{REQUEST_FILENAME} !-d\n"
             "RewriteRule . /index.php [L]\n"
@@ -1161,4 +1161,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = DDEVManagerGUI(root)
     root.mainloop()
-
+    
