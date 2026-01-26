@@ -16,9 +16,25 @@ CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".ddevgui.json")
 DEFAULTS = {
     "php_version": "8.3",
     "db_version": "mysql:8.0",
-    "webserver": "apache-fpm"
+    "webserver": "apache-fpm",
+    "pathwin": r"C:\websites",
+    "pathnix": Path(__file__).resolve().parent / "websites",
 }
-PROJECTS_DIR = Path(__file__).resolve().parent / "websites"
+def load_defaults():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return DEFAULTS.copy()
+settings = load_defaults()
+pathwin = settings["pathwin"]
+pathnix = settings["pathnix"]
+
+PROJECTS_DIR = pathnix
+if platform.system() == "Windows":
+    PROJECTS_DIR = Path(pathwin)
 REFRESH_INTERVAL = 5000
 DDEV_COMMAND = "ddev"
 if platform.system() == "Windows":
@@ -1148,7 +1164,9 @@ def save_defaults(php_version, db_version, webserver):
     data = {
         "php_version": php_version,
         "db_version": db_version,
-        "webserver": webserver
+        "webserver": webserver,
+        "pathwin": DEFAULTS["pathwin"],
+        "pathnix": str(DEFAULTS["pathnix"]),
     }
     try:
         with open(CONFIG_FILE, "w") as f:
@@ -1157,8 +1175,8 @@ def save_defaults(php_version, db_version, webserver):
         print(f"Error saving config: {e}")
 
 if __name__ == "__main__":
+    PROJECTS_DIR = Path(PROJECTS_DIR)
     PROJECTS_DIR.mkdir(exist_ok=True)
     root = tk.Tk()
     app = DDEVManagerGUI(root)
     root.mainloop()
-    
